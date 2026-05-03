@@ -1,0 +1,60 @@
+# terraform.tfvars.example — Copy this file to terraform.tfvars and fill in.
+#
+# HOW TO USE:
+#   cp terraform.tfvars.example terraform.tfvars
+#   nano terraform.tfvars    (or use any editor)
+#
+# terraform.tfvars is gitignored — your secrets stay local.
+
+# ============================================================================
+# REQUIRED — you MUST set these two values
+# ============================================================================
+
+# OpenSSH public key contents (NOT a path). Generate with:
+#   ssh-keygen -t ed25519 -f ~/.ssh/openstack-prod
+# Then copy ~/.ssh/openstack-prod.pub contents here as a single line.
+#
+# Example:
+#   ssh_public_key = "ssh-ed25519 AAAAC3Nza... your-comment"
+ssh_public_key = "ssh-ed25519 AAAA...REPLACE_ME... user@laptop"
+
+# Public IPs allowed to SSH the bastion. Use a list so you can add one entry
+# per network you work from (home, office, cafe) instead of replacing the
+# value every time you switch networks.
+# Find your current IP with:  curl -s https://checkip.amazonaws.com
+# Then add /32, for example: "203.0.113.42/32"
+allowed_admin_cidrs = [
+  "YOUR.PUBLIC.IP/32",
+  # "198.51.100.5/32", # office
+]
+
+# ============================================================================
+# OPTIONAL — defaults are fine for most cases
+# ============================================================================
+
+# Azure subscription ID. If left blank, Terraform uses the active subscription
+# from `az account show`. Run `az account list -o table` to see your subs.
+# subscription_id = "00000000-0000-0000-0000-000000000000"
+
+# Azure region (default: Singapore = southeastasia)
+# Other common picks: eastus, westus2, westeurope, australiaeast.
+# location = "southeastasia"
+
+# Linux admin username on every VM (default: ubuntu)
+# admin_username = "ubuntu"
+
+# VM sizes (defaults assume southeastasia where B-family is capacity-restricted)
+# bastion_vm_size    = "Standard_D2als_v7"  # ~$0.069/hr — AMD v7, 4 GB low-mem
+# controller_vm_size = "Standard_D2as_v7"   # ~$0.100/hr — AMD v7, close to AWS m5.large
+# compute_vm_size    = "Standard_D2as_v7"   # ~$0.100/hr — AMD v7, supports nested virt
+#
+# If your region has burstable B-family stock, the cheaper alternative is:
+# bastion_vm_size    = "Standard_B2s_v2"    # ~$0.042/hr — burstable, 4 GB
+
+# Number of compute nodes
+# compute_count = 2
+
+# Disk sizes (GB)
+# bastion_root_size_gb = 64  # OS + tools + Kolla venv + dated setup logs
+# root_size_gb         = 80  # controller/compute OS + Docker images
+# cinder_size_gb       = 40  # Cinder LVM block storage

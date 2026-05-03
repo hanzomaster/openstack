@@ -1,0 +1,17 @@
+# Copy to terraform.tfvars and fill in.
+# terraform.tfvars is gitignored.
+
+key_name = "your-ec2-keypair-name"
+my_ip    = "YOUR.PUBLIC.IP/32"        # find with: curl -s https://checkip.amazonaws.com
+
+# Option B (matches the currently deployed hand-made instance):
+#   leave both toggles at their defaults (false)
+# enable_neutron_eni = false
+# enable_cinder_ebs  = false
+
+# Option A (real second ENI + real EBS for Cinder):
+# enable_neutron_eni = true
+# enable_cinder_ebs  = true
+
+# Change AZ/region if needed:
+# region = "ap-southeast-1"

@@ -1,0 +1,68 @@
+# =============================================================================
+# Terraform — never commit state, plans, real vars, or local provider plugins
+# =============================================================================
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+*.tfplan
+plan.out
+*.plan
+crash.log
+crash.*.log
+
+# Variable files contain real secrets / IPs / keys.
+# Keep *.tfvars.example as templates.
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+!*.tfvars.example.json
+
+# Terraform CLI / overrides
+.terraformrc
+terraform.rc
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# =============================================================================
+# Kolla-Ansible — passwords are generated on the host, never in repo
+# =============================================================================
+kolla-config/passwords.yml
+**/passwords.yml
+
+# =============================================================================
+# Secrets / keys / credentials accidentally landing in the tree
+# =============================================================================
+*.pem
+*.key
+id_rsa*
+*.pub
+!*.pub.example
+!terraform.tfvars.example.pub
+.env
+.env.*
+!.env.example
+credentials.json
+sts get-caller-identity
+*aws-credentials*
+*azure-credentials*
+
+# =============================================================================
+# Logs
+# =============================================================================
+*.log
+logs/
+
+# =============================================================================
+# OS / editor cruft
+# =============================================================================
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/

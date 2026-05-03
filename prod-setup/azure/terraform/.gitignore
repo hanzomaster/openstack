@@ -1,0 +1,52 @@
+# Local .terraform directories
+**/.terraform/*
+
+# Terraform state files (may contain secrets)
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Crash log files
+crash.log
+crash.*.log
+
+# Terraform plan output (binary; may leak sensitive data)
+*.tfplan
+plan.out
+*.plan
+
+# Variable files with real values (secrets)
+# Keep .tfvars.example as a template
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+!*.tfvars.example.json
+
+# CLI configuration files
+.terraformrc
+terraform.rc
+
+# Override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Ignore transient editor / OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# SSH keys and certs that may land in the working tree
+*.pem
+*.key
+id_rsa*
+*.pub
+!terraform.tfvars.example.pub
+
+# Ansible inventories rendered locally (if any)
+inventory.ini
+hosts.ini

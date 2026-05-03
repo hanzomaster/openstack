@@ -1,0 +1,2 @@
+openstacksdk>=4.0,<5.0
+requests>=2.31,<3.0
