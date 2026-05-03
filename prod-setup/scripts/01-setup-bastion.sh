@@ -227,6 +227,13 @@ kolla-ansible install-deps
 echo "Installing Docker SDK for Python (needed by Kolla's prechecks)..."
 pip install 'docker>=7.1.0' dbus-python
 
+# python-openstackclient ships separately from kolla-ansible. The bastion
+# needs it to verify the deploy (02 step 6) and to drive the cluster after
+# (03-verify.sh boots a test VM). Without this line, every `openstack ...`
+# call fails with "command not found".
+echo "Installing python-openstackclient..."
+pip install 'python-openstackclient'
+
 # ---------------------------------------------------------------------------
 # VIP-pingability precheck patch (BOTH AWS and Azure)
 #

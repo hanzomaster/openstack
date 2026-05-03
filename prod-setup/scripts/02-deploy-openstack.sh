@@ -959,6 +959,12 @@ if ! kolla-ansible post-deploy -i "$INVENTORY"; then
   kolla-ansible post-deploy -i "$INVENTORY"
 fi
 
+# post-deploy templates admin-openrc.sh / clouds.yaml as root (mode 0600),
+# so sourcing them as $USER below would hit "Permission denied" even though
+# /etc/kolla itself is $USER-owned. Re-chown the whole tree to keep the
+# invariant the pre-flight check enforces.
+sudo chown -R "$USER":"$USER" /etc/kolla
+
 # Deploy + post-deploy succeeded — Keystone is fully up and admin creds are
 # written. Stop the watchdog explicitly (the EXIT trap also stops it; this
 # just frees the controller earlier on the happy path).
@@ -979,21 +985,25 @@ if [[ -f /etc/kolla/admin-openrc.sh ]]; then
   # shellcheck disable=SC1091
   source /etc/kolla/admin-openrc.sh
 
+  # No `|| true` here: if the openstack CLI is missing (01-setup-bastion.sh
+  # didn't install python-openstackclient) or admin-openrc.sh is bad, we
+  # want this block to fail the deploy loudly. A previous masked-failure
+  # version of this block hid a missing CLI install for an entire deploy.
   echo ""
   echo "--- OpenStack Service List ---"
-  openstack --insecure service list || true
+  openstack --insecure service list
 
   echo ""
   echo "--- OpenStack Endpoints (first 20) ---"
-  openstack --insecure endpoint list | head -20 || true
+  openstack --insecure endpoint list | head -20
 
   echo ""
   echo "--- Hypervisor List (should show 2 compute nodes) ---"
-  openstack --insecure hypervisor list || true
+  openstack --insecure hypervisor list
 
   echo ""
   echo "--- Network Agent List ---"
-  openstack --insecure network agent list || true
+  openstack --insecure network agent list
 else
   echo "ERROR: /etc/kolla/admin-openrc.sh not found."
   echo "post-deploy may have failed. Check the log."

@@ -62,19 +62,24 @@ kolla_internal_vip_address: "10.0.2.250"
 # inter-service communication, tenant VXLAN tunnels, etc.
 network_interface: "eth0"
 
-# API INTERFACE ADDRESS — pin services to the management IP, not the VIP.
-# ----------------------------------------------------------------------
+# API INTERFACE ADDRESS — pin services to each host's management IP, not the VIP.
+# -------------------------------------------------------------------------------
 # Kolla normally derives api_interface_address from ansible_facts (the
-# "primary" IP on network_interface). On AWS, keepalived adds the VIP
-# (10.0.2.250) to ens5 as a non-secondary address, which bumps the
-# kernel-reported primary IP from 10.0.2.10 → 10.0.2.250. As a result,
-# MariaDB tries to bind 10.0.2.250:3306 — exactly where ProxySQL already
-# listens — and crashes with "Address already in use".
+# "primary" IP on network_interface). On the controller, keepalived adds
+# the VIP (10.0.2.250) to eth0, which bumps the kernel-reported primary
+# IP from 10.0.2.10 → 10.0.2.250. As a result, MariaDB tries to bind
+# 10.0.2.250:3306 — exactly where ProxySQL already listens — and crashes
+# with "Address already in use".
 #
-# Setting api_interface_address explicitly anchors per-host services
-# (MariaDB, RabbitMQ, internal APIs) to the controller's management IP,
-# leaving the VIP free for ProxySQL/HAProxy.
-api_interface_address: "10.0.2.10"
+# We override with the inventory's `ansible_host` for each host, which
+# resolves to:
+#   controller → 10.0.2.10   (anchors MariaDB/RabbitMQ off the VIP)
+#   compute-1  → 10.0.2.21   (so QEMU's VNC binds .21:5900, not .10:5900)
+#   compute-2  → 10.0.2.22
+#
+# A literal "10.0.2.10" here would apply cluster-wide and break VNC on
+# computes (QEMU: "Failed to bind socket: Cannot assign requested address").
+api_interface_address: "{{ hostvars[inventory_hostname].ansible_host }}"
 
 # NEUTRON EXTERNAL INTERFACE
 # --------------------------
