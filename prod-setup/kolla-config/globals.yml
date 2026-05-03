@@ -85,6 +85,22 @@ api_interface_address: "10.0.2.10"
 # into it for floating IP and provider network traffic.
 neutron_external_interface: "eth1"
 
+# COMPUTE NODES DO NOT NEED AN EXTERNAL BRIDGE
+# ---------------------------------------------
+# Default in 2025.2 is "yes": the openvswitch role tries to add
+# `neutron_external_interface` (eth1) to br-ex on EVERY host in the
+# `openvswitch` group — which includes compute. Our compute nodes only
+# have eth0 (Terraform doesn't attach a second NIC to them), so that
+# fails with `ovs-vsctl: could not open network device eth1 (No such
+# device)`.
+#
+# We use centralised L3 on the controller (no DVR), so compute nodes
+# never originate north-south traffic and never need br-ex. Setting
+# this to "no" tells kolla to skip the add-port on compute. Flip back
+# to "yes" only if you enable DVR — and in that case, also add a
+# second NIC to compute in azure/terraform/main.tf.
+computes_need_external_bridge: "no"
+
 
 # =============================================================================
 # Virtualization

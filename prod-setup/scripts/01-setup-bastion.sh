@@ -273,6 +273,32 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# MariaDB wait-for-VIP retry bump (BOTH AWS and Azure, defensive)
+#
+# WHY:
+#   The post-deploy task `mariadb : Wait for MariaDB service to be ready
+#   through VIP` retries 6× with 10s delay = 60s total. That's tight when
+#   ProxySQL has just restarted (Kolla's loadbalancer role triggers a
+#   restart) and is still re-probing its backend, or when keepalived
+#   briefly flapped. On Azure with the (now-disabled) HAProxy watchdog
+#   active, 60s wasn't enough; with the watchdog disabled this is rare
+#   but non-zero — bumping to 30 retries (5 min total) gives ProxySQL's
+#   own monitor cadence ample time to re-mark the backend ONLINE.
+#
+# WHAT:
+#   Bump retries from 6 to 30 in roles/mariadb/tasks/check.yml.
+#   Idempotent — only fires when the file still has retries=6.
+#   Lives in the venv. If you rebuild the venv (re-run this script),
+#   the patch reapplies automatically, which is exactly what we want.
+MARIADB_CHECK="$VENV/share/kolla-ansible/ansible/roles/mariadb/tasks/check.yml"
+if [[ -f "$MARIADB_CHECK" ]] && grep -qE '^[[:space:]]+retries:[[:space:]]+6$' "$MARIADB_CHECK"; then
+  sed -i 's|^\([[:space:]]\+retries:[[:space:]]\+\)6$|\130|' "$MARIADB_CHECK"
+  echo "Patched mariadb wait-for-VIP retries 6 -> 30 in $MARIADB_CHECK"
+else
+  echo "MariaDB wait-for-VIP retries already patched (or file not found) — skipping."
+fi
+
+# ---------------------------------------------------------------------------
 # Step 5: Configure /etc/kolla
 # ---------------------------------------------------------------------------
 echo ""

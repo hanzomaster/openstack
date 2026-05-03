@@ -166,6 +166,51 @@ done
 echo "  All nodes reachable and cloud-init complete."
 
 # ---------------------------------------------------------------------------
+# Pre-flight (cont): strip the Terraform-pre-assigned VIP from controller eth0.
+#
+# WHY:
+#   Both AWS (aws_network_interface.controller_mgmt) and Azure
+#   (azurerm_network_interface.controller_mgmt's "vip" ip_configuration)
+#   pre-assign the VIP (default 10.0.2.250) as a SECONDARY IP on the
+#   controller's primary NIC, so the cloud platform routes VIP traffic to
+#   the controller before keepalived has come up.
+#
+#   Side-effect: on the controller's kernel side, that pre-assigned VIP
+#   often ends up reported as the *primary* address on eth0 (with the
+#   real management IP demoted to "secondary metric 100"). Ansible's fact
+#   gathering then picks up the VIP as eth0's address, and the
+#   `kolla_address('api', controller)` filter (used by rabbitmq's
+#   hostname-uniqueness precheck and others) returns the VIP instead of
+#   the management IP. Result: rabbitmq precheck fails with
+#   "Hostname has to resolve uniquely to the IP address of api_interface"
+#   even though /etc/hosts is correct.
+#
+#   Setting `api_interface_address` in globals.yml only fixes services
+#   that reference that variable directly — `kolla_address` reads
+#   ansible_facts.eth0.ipv4.address with no override path for IPv4.
+#
+# WHAT:
+#   Delete the /24 form of the VIP from controller eth0. Keepalived will
+#   re-add it as a /32 during deploy (and the existing
+#   loadbalancer-precheck patch tolerates that). Idempotent — only acts
+#   when the /24 form is present.
+# ---------------------------------------------------------------------------
+echo ""
+echo "--- Pre-flight: stripping pre-assigned VIP from controller eth0 (if present) ---"
+PROD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+VIP=$(awk '/^kolla_internal_vip_address:/{print $2}' \
+  "$PROD_DIR/kolla-config/globals.yml" 2>/dev/null | tr -d '"' || true)
+VIP="${VIP:-10.0.2.250}"
+ssh "ubuntu@${CONTROLLER_IP}" "
+  if ip -4 addr show eth0 | grep -qE 'inet ${VIP}/24'; then
+    echo '  found ${VIP}/24 on eth0 — removing so kolla_address picks the management IP'
+    sudo ip addr del ${VIP}/24 dev eth0
+  else
+    echo '  ${VIP}/24 not present on eth0 — nothing to do (keepalived /32 form is fine)'
+  fi
+"
+
+# ---------------------------------------------------------------------------
 # Step 1: Prepare Cinder LVM on compute nodes
 # ---------------------------------------------------------------------------
 # Each compute node has an extra data volume that we turn into an LVM
@@ -726,8 +771,6 @@ stop_haproxy_watchdog() {
     "sudo pkill -f haproxy-vip-watchdog.sh 2>/dev/null || true" 2>/dev/null || true
 }
 
-PROD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-
 # Always stop the watchdog on script exit (success, failure, or Ctrl-C) so it
 # never lingers on the controller across runs.
 trap 'stop_haproxy_watchdog' EXIT
@@ -763,7 +806,11 @@ fix_haproxy_backend_addresses
 # Opt out: OPENSTACK_DISABLE_PROXYSQL_AUTORECOVERY=1 bash scripts/02-...
 # ---------------------------------------------------------------------------
 deploy_with_proxysql_recovery() {
-  local err_pattern='Max connect timeout reached while reaching hostgroup 0'
+  # Two error signatures both trace back to the same post-restart probe race:
+  #   - "Max connect timeout reached while reaching hostgroup 0"  (ProxySQL classic)
+  #   - "Can't connect to MySQL server on '<vip>' (timed out)"   (pymysql side)
+  # Either signature on the Wait-for-VIP task triggers recovery.
+  local err_pattern='Max connect timeout reached while reaching hostgroup 0|Can'\''t connect to MySQL server on'
   local err_task='Wait for MariaDB service to be ready through VIP'
   local capture
   capture=$(mktemp)
@@ -787,7 +834,7 @@ deploy_with_proxysql_recovery() {
 
     if [[ "${OPENSTACK_DISABLE_PROXYSQL_AUTORECOVERY:-0}" != "1" ]] \
        && [[ $recoveries -lt $max_recoveries ]] \
-       && grep -qF "$err_pattern" "$capture" \
+       && grep -qE "$err_pattern" "$capture" \
        && grep -qF "$err_task" "$capture"; then
 
       recoveries=$((recoveries+1))
@@ -861,13 +908,31 @@ deploy_with_proxysql_recovery() {
   done
 }
 
-# Start the HAProxy backend-watchdog BEFORE deploy. It silently rewrites any
-# VIP-pointing `server` line that any service role re-renders, so the keystone
-# `service-ks-register` task (and every other VIP-bound task downstream) hits
-# a working backend instead of a 503. The trap above stops it on exit.
-echo ""
-echo "--- Pre-deploy: starting HAProxy backend-watchdog ---"
-start_haproxy_watchdog
+# Optional: start the HAProxy backend-watchdog BEFORE deploy. The watchdog
+# polls /etc/kolla/haproxy/*.cfg every 2s, rewrites any VIP-pointing `server`
+# line that any service role re-renders, then restarts haproxy. It was added
+# to defend against keystone's `service-ks-register` hitting an HTTP 503 when
+# a service role re-templated haproxy with VIP backends mid-deploy.
+#
+# DEFAULT: OFF. The 2s poll-and-restart turned out to be too aggressive on
+# Azure: every haproxy restart trips keepalived's `check_alive` script,
+# flapping the VRRP instance (FAULT → BACKUP → MASTER) and removing the
+# VIP. The next `Wait for MariaDB through VIP` lands in the keepalived
+# flap window and times out, even with extended retries.
+#
+# In practice the pre-deploy `fix_haproxy_backend_addresses` one-shot is
+# enough — service-ks-register passes on a clean deploy without the
+# watchdog needing to fight kolla mid-run. Re-enable explicitly with
+# OPENSTACK_ENABLE_HAPROXY_WATCHDOG=1 if you ever see service-ks-register
+# fail with HTTP 503 referencing a VIP backend.
+if [[ "${OPENSTACK_ENABLE_HAPROXY_WATCHDOG:-0}" == "1" ]]; then
+  echo ""
+  echo "--- Pre-deploy: starting HAProxy backend-watchdog (opt-in via env var) ---"
+  start_haproxy_watchdog
+else
+  echo ""
+  echo "--- Pre-deploy: HAProxy backend-watchdog disabled (set OPENSTACK_ENABLE_HAPROXY_WATCHDOG=1 to enable) ---"
+fi
 
 deploy_with_proxysql_recovery
 
