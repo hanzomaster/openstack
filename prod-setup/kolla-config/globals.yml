@@ -145,13 +145,32 @@ enable_cinder_backend_lvm: "yes"
 # creates this VG on the extra EBS volume of each compute node.
 cinder_volume_group: "cinder-volumes"
 
-# Cinder cluster name — required when more than one cinder-volume runs.
-# We have two storage nodes (compute-1, compute-2 in the [storage] group),
-# so the cinder-volume processes need a shared cluster identity to coordinate
-# (claiming volumes, avoiding split-brain). Any non-empty string works; the
-# value just labels them as peers in the same logical cluster.
+# Cinder cluster name — DO NOT SET with the LVM backend.
+# Setting cinder_cluster_name enables Active/Active (A/A) clustering, which
+# requires a backend that explicitly declares SUPPORTS_ACTIVE_ACTIVE (Ceph
+# RBD, Pure, etc.). The LVM driver does NOT support A/A and refuses to start
+# with the error:
+#   "Active-Active configuration is not currently supported by driver
+#    cinder.volume.drivers.lvm.LVMVolumeDriver"
+# So with multiple compute nodes each running their own LVM backend, our two
+# storage nodes operate as independent hosts: compute-1@lvm-1 and
+# compute-2@lvm-1. Each manages its own local VG; the cinder-scheduler picks
+# between them per volume request. Volume operations (attach/detach/delete)
+# are routed to whichever host owns the volume. This is the standard,
+# supported topology for non-clustered LVM.
 # See: https://docs.openstack.org/kolla-ansible/latest/reference/storage/cinder-guide.html#ha
-cinder_cluster_name: "prod-cluster"
+# cinder_cluster_name: "prod-cluster"   # leave commented — see above
+
+# Kolla ships TWO complementary prechecks that fight each other on this
+# topology:
+#   - "Multiple cinder-volume instances detected but cinder_cluster_name is
+#      not set" (fires when len(groups['cinder-volume']) > 1 and name is "")
+#   - "Active-Active configuration is not currently supported by driver
+#      cinder.volume.drivers.lvm.LVMVolumeDriver" (the runtime error if we
+#      DO set the name with LVM)
+# We're caught between them — no value of cinder_cluster_name passes both.
+# Skip the precheck; the runtime config is still correct.
+cinder_cluster_skip_precheck: true
 
 
 # =============================================================================
