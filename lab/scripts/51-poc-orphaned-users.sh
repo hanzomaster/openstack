@@ -101,16 +101,16 @@ ORPHAN_COUNT="$(echo "$RESULT" | python3 -c 'import json,sys; print(len(json.loa
 
 echo
 echo "=== ORPHANED USERS ($ORPHAN_COUNT) ==="
-echo "$RESULT" | python3 -c '
-import json, sys
-users = json.load(sys.stdin)
+RESULT="$RESULT" python3 - <<'PYEOF'
+import json, os
+users = json.loads(os.environ["RESULT"])
 if not users:
     print("  (none found)")
 else:
     for u in users:
         status = "enabled" if u["enabled"] in (True, "True", "true") else "disabled"
-        print(f"  - {u[\"name\"]}  (id={u[\"id\"]}, {status})")
-'
+        print(f"  - {u['name']}  (id={u['id']}, {status})")
+PYEOF
 
 # ------------------------------------------------------------------
 # 3. Post to Mattermost (optional)

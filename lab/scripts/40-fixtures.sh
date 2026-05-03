@@ -60,6 +60,26 @@ done
 echo "[role] orphan-charlie: deliberately no role assignments"
 echo "[role] auditor: deliberately no role assignments (ticket 3 will add readonly-auditor later)"
 
+# ----------------------------------------------------------------------
+# Compute/image fixtures — needed by 53-verify-readonly-role.sh which
+# does `os server create --flavor m1.tiny --image cirros` to confirm
+# Nova denies non-readers. Without these the verifier fails before the
+# policy check fires (HTTP 400/404 on missing image/flavor instead of 403).
+# ----------------------------------------------------------------------
+echo "[flavor] m1.tiny"
+if ! os flavor show m1.tiny >/dev/null 2>&1; then
+  tolerate_exists os flavor create m1.tiny --vcpus 1 --ram 512 --disk 1 --public
+fi
+
+echo "[image] cirros"
+if ! os image show cirros >/dev/null 2>&1; then
+  CIRROS_URL="https://download.cirros-cloud.net/0.6.2/cirros-0.6.2-x86_64-disk.img"
+  CIRROS_FILE="/tmp/cirros.img"
+  [[ -f "$CIRROS_FILE" ]] || curl -sL -o "$CIRROS_FILE" "$CIRROS_URL"
+  tolerate_exists os image create cirros \
+    --file "$CIRROS_FILE" --disk-format qcow2 --container-format bare --public
+fi
+
 echo
 echo "=== RESULT ==="
 os user list

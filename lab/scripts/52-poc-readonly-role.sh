@@ -187,9 +187,20 @@ write_policy cinder '
 "readonly_or_owner_or_admin": "rule:admin_or_owner or role:readonly-auditor"
 "readonly_or_admin": "rule:admin_api or role:readonly-auditor"
 
-# Volumes
+# Volumes — reads
 "volume:get_all": "rule:readonly_or_owner_or_admin"
 "volume:get": "rule:readonly_or_owner_or_admin"
+
+# Volumes — writes (Cinder default lets any project-scoped user create;
+# tighten to admin or explicit member so readonly-auditor cannot write)
+"volume:create": "role:admin or role:member"
+"volume:update": "role:admin or role:member"
+"volume:delete": "role:admin or role:member"
+"volume:attachment_create": "role:admin or role:member"
+"volume:attachment_update": "role:admin or role:member"
+"volume:attachment_delete": "role:admin or role:member"
+"volume:create_snapshot": "role:admin or role:member"
+"volume:delete_snapshot": "role:admin or role:member"
 
 # Snapshots
 "volume:get_all_snapshots": "rule:readonly_or_owner_or_admin"
