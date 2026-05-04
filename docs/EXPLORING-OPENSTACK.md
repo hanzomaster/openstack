@@ -352,6 +352,149 @@ being broken.
 
 ---
 
+## Appendix C: Creating your first instance with a volume
+
+Goal: launch a VM with a separate persistent Cinder volume attached, both
+from the CLI and from Horizon. Treat this as a takeaway reference once the
+walkthrough in §2/§3 makes sense.
+
+### Picking an image
+
+| Image                    | Size    | Boot time   | Notes                                                      |
+| ------------------------ | ------- | ----------- | ---------------------------------------------------------- |
+| **CirrOS 0.6.2**         | ~21 MB  | seconds     | already in your Glance — best for learning                 |
+| Alpine cloud             | ~50 MB  | seconds     | minimal real Linux with `apk` for package management       |
+| Ubuntu cloud minimal     | ~280 MB | 30–60 s     | real distro; only worth uploading if you need apt          |
+
+Stick with **CirrOS** unless you need otherwise. Console login: user
+`cirros`, password `gocubsgo`.
+
+### Pre-flight checklist
+
+| Need                              | How to verify                                                     |
+| --------------------------------- | ----------------------------------------------------------------- |
+| Image in Glance                   | `openstack --insecure image list \| grep cirros`                  |
+| Flavor                            | `openstack --insecure flavor list \| grep m1.tiny`                |
+| Project + member user             | `openstack --insecure user show alice` (set up by 40-fixtures)    |
+| Compute capacity                  | `openstack --insecure compute service list --service nova-compute` |
+| Cinder volume capacity            | `openstack --insecure volume service list`                        |
+| (optional) SSH keypair            | created in step 2 of the CLI flow below                           |
+| (optional) Security group rules   | created in step 2 of the CLI flow below                           |
+
+### CLI flow
+
+```bash
+ssh bastion
+source ~/kolla-venv/bin/activate
+source /etc/kolla/admin-openrc.sh
+export OS_USERNAME=alice OS_PASSWORD='Pass123!' OS_PROJECT_NAME=demo-proj
+unset OS_SYSTEM_SCOPE
+
+# 1. Network + subnet (Neutron)
+openstack --insecure network create my-net
+openstack --insecure subnet  create my-subnet --network my-net --subnet-range 10.99.0.0/24
+
+# 2. (optional) Keypair + security-group rules so you can ping/SSH the VM
+openstack --insecure keypair create my-key > ~/my-key.pem && chmod 400 ~/my-key.pem
+openstack --insecure security group rule create --proto icmp default
+openstack --insecure security group rule create --proto tcp --dst-port 22 default
+
+# 3. Boot the instance from cirros (ephemeral root disk per flavor)
+openstack --insecure server create my-vm \
+  --flavor m1.tiny --image cirros --network my-net --key-name my-key --wait
+
+# 4. Create a 2 GB Cinder volume (separate from VM's ephemeral disk)
+openstack --insecure volume create my-vol --size 2
+
+# 5. Attach the volume — appears as /dev/vdb inside the VM
+openstack --insecure server add volume my-vm my-vol
+
+# 6. Verify
+openstack --insecure server show my-vm -f shell -c status -c addresses -c volumes_attached
+openstack --insecure volume list
+```
+
+To open a graphical console session in CirrOS:
+
+```bash
+openstack --insecure console url show my-vm
+# Open the URL in your browser via SSH tunnel:  ssh -L 6080:10.0.2.250:6080 bastion
+# Visit the URL but replace 10.0.2.250 with localhost:6080
+# Login:  cirros / gocubsgo
+# Inside CirrOS:  sudo fdisk -l   shows /dev/vdb (the attached volume, unformatted)
+```
+
+Cleanup when done:
+
+```bash
+openstack --insecure server   remove volume my-vm my-vol
+openstack --insecure volume   delete my-vol
+openstack --insecure server   delete my-vm --wait
+openstack --insecure subnet   delete my-subnet
+openstack --insecure network  delete my-net
+openstack --insecure keypair  delete my-key
+```
+
+### Horizon flow
+
+Open the SSH tunnel + login per §3a, then switch to project `demo-proj` in
+the top-left.
+
+1. **Project → Network → Networks → Create Network**
+   - Tab *Network*: name `my-net`
+   - Tab *Subnet*: name `my-subnet`, CIDR `10.99.0.0/24`
+   - Tab *Subnet Detail*: defaults are fine → **Create**
+
+2. **Project → Compute → Key Pairs → Create Key Pair** (optional)
+   - Type `SSH Key`, name `my-key` → download the `.pem`
+
+3. **Project → Network → Security Groups → default → Manage Rules → Add Rule** (optional)
+   - Add an `All ICMP` ingress rule and an `SSH (22)` ingress rule
+
+4. **Project → Compute → Instances → Launch Instance**
+   - *Details*: name `my-vm`
+   - *Source*: select `cirros`. Toggle **Create New Volume: No** for now (we
+     attach a separate one in step 5)
+   - *Flavor*: `m1.tiny`
+   - *Networks*: pick `my-net`
+   - *Security Groups*: `default`
+   - *Key Pair*: `my-key` (if created)
+   - **Launch Instance** — watch the progress bar; Horizon is polling
+     `task_state` exactly the way our shell loop did in §2c.
+
+5. **Project → Volumes → Volumes → Create Volume**
+   - Name `my-vol`, size `2 GiB` → **Create**
+   - Then on the volume's row: **Manage Attachments → Attach to Instance: my-vm**
+
+6. **Console** — Project → Compute → Instances → `my-vm` → **Console** tab.
+   CirrOS login appears in the browser.
+
+### Two boot patterns
+
+What §C above does is **boot from image + attach a separate volume** — the
+VM's root disk is ephemeral (lives in the flavor's `disk` size on the compute
+host); the separate Cinder volume gives you a persistent secondary disk.
+
+The other common pattern is **boot from volume**: Nova creates a Cinder
+volume from the image at launch time and uses that as the root disk. The
+VM's OS then lives on a persistent Cinder volume that survives instance
+deletion and can be snapshotted.
+
+```bash
+# Boot-from-volume — root disk is a 5 GB Cinder volume created from cirros
+openstack --insecure server create my-vm \
+  --flavor m1.tiny --network my-net --boot-from-volume 5 --image cirros --wait
+```
+
+In Horizon's Launch Instance wizard: *Source* → **Create New Volume: Yes**,
+**Volume Size: 5**.
+
+Worth trying both at least once — boot-from-volume is what production VMs
+typically use because it makes the VM independently persistable and
+snapshotable.
+
+---
+
 ## Where to go from here
 
 - `docs/LEARNING.md` — comprehensive reference (1200+ lines covering
