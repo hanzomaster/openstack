@@ -203,26 +203,27 @@ are identical to the AWS guide. Follow [../README.md](../README.md) from
 
 ## Teardown / Cost Control
 
-### Stop VMs (keep data, stop paying for compute)
+For pause/resume workflows that save money without losing state, use the
+helper script — see [COST-CONTROL.md](COST-CONTROL.md) for the full guide.
 
 ```bash
-RG=$(terraform -chdir=prod-setup/azure/terraform output -raw resource_group_name)
-az vm deallocate --ids $(az vm list -g "$RG" --query "[].id" -o tsv)
+cd prod-setup/azure
+
+# Pause for the night/weekend (~$269/mo saved, ~30 sec to resume)
+./scripts/cost-control.sh pause
+./scripts/cost-control.sh resume
+
+# Pause for vacations (~$303/mo saved, ~2 min to resume — also drops NAT)
+./scripts/cost-control.sh pause-deep
+./scripts/cost-control.sh resume-deep
+
+# See what's running and what's deallocated
+./scripts/cost-control.sh status
 ```
 
-`deallocate` (not `stop`) is the one that stops billing for compute on
-Azure. Plain `stop` keeps the compute reservation.
-
-The NAT Gateway and Public IPs continue to cost a few cents per hour
-even when VMs are deallocated. To fully stop costs, destroy everything.
-
-### Start VMs back up
-
-```bash
-RG=$(terraform -chdir=prod-setup/azure/terraform output -raw resource_group_name)
-az vm start --ids $(az vm list -g "$RG" --query "[].id" -o tsv)
-# OpenStack containers auto-restart with Docker.
-```
+`deallocate` (not `stop`) is what stops compute billing on Azure — plain
+`stop` keeps the compute reservation. Disks, public IPs, and Terraform
+state survive both pause levels.
 
 ### Destroy everything
 
