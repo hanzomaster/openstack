@@ -18,15 +18,18 @@
 #   ssh_public_key = "ssh-ed25519 AAAAC3Nza... your-comment"
 ssh_public_key = "ssh-ed25519 AAAA...REPLACE_ME... user@laptop"
 
-# Public IPs allowed to SSH the bastion. Use a list so you can add one entry
-# per network you work from (home, office, cafe) instead of replacing the
-# value every time you switch networks.
-# Find your current IP with:  curl -s https://checkip.amazonaws.com
-# Then add /32, for example: "203.0.113.42/32"
-allowed_admin_cidrs = [
-  "YOUR.PUBLIC.IP/32",
-  # "198.51.100.5/32", # office
-]
+# OPTIONAL. Terraform auto-detects your laptop's current public IP at apply
+# time (via the `http` provider) and adds it to the bastion SSH allowlist,
+# so most people can leave this empty.
+#
+# Add entries here only for networks you want *permanently* allowed in
+# addition to your current IP — e.g. a teammate's home, a static office IP.
+# Old/unused entries stay in the rule until you remove them, so keep this
+# list curated.
+# allowed_admin_cidrs = [
+#   "198.51.100.5/32", # office
+#   "203.0.113.0/24",  # teammate's home block
+# ]
 
 # ============================================================================
 # OPTIONAL — defaults are fine for most cases

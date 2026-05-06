@@ -58,19 +58,16 @@ variable "ssh_private_key_path" {
 }
 
 variable "allowed_admin_cidrs" {
-  # NO DEFAULT — you must provide at least one entry.
-  # Public IPs (in CIDR form) allowed to SSH the bastion. Add one entry per
-  # network you work from (home, office, etc.) so you don't have to replace
-  # the value every time you change networks — just append.
-  # Find your current IP with:  curl -s https://checkip.amazonaws.com
-  # Then add /32, e.g. "203.0.113.42/32"
-  description = "List of public IPs in CIDR notation allowed to SSH the bastion (e.g. [\"203.0.113.42/32\", \"198.51.100.5/32\"])."
+  # OPTIONAL. Terraform looks up your laptop's current public IP at apply time
+  # (via data.http.my_ip in main.tf) and adds it to the bastion SSH allowlist
+  # automatically, so you don't normally need to set this.
+  #
+  # Use this list for networks you want *permanently* allowed regardless of
+  # where you last ran `terraform apply` — e.g. home + office + a teammate.
+  # Add one /32 (or wider CIDR) per network: ["203.0.113.42/32", "198.51.100.0/24"].
+  description = "Optional static list of public IPs (CIDR) allowed to SSH the bastion, in addition to the laptop IP auto-detected at apply time."
   type        = list(string)
-
-  validation {
-    condition     = length(var.allowed_admin_cidrs) > 0
-    error_message = "allowed_admin_cidrs must contain at least one CIDR — otherwise nothing can SSH to the bastion."
-  }
+  default     = []
 }
 
 # ---------------------------------------------------------------------------

@@ -72,6 +72,14 @@ terraform {
       source  = "hashicorp/local"
       version = "~> 2.5"
     }
+
+    # `http` provider — used by data.http.my_ip to look up the laptop's
+    # current public IP at apply time, so the bastion SSH allowlist tracks
+    # whichever network you're on without manual tfvars edits.
+    http = {
+      source  = "hashicorp/http"
+      version = "~> 3.4"
+    }
   }
 }
 
@@ -114,6 +122,34 @@ locals {
   common_tags = {
     Project = var.name_prefix
   }
+}
+
+
+###############################################################################
+# SECTION 2.6: Admin SSH allowlist (current laptop IP + static list)
+###############################################################################
+# The bastion NSG only opens port 22 to the IPs in `local.admin_cidrs`. That
+# list is built from two sources:
+#
+#   1. data.http.my_ip — fetches the laptop's current public IP from
+#      checkip.amazonaws.com at apply time. This means you don't have to
+#      curl + edit tfvars every time you change networks.
+#
+#   2. var.allowed_admin_cidrs — optional static entries for networks you
+#      want permanently allowed (home, office) so SSH still works from
+#      there even if you last ran `terraform apply` from somewhere else.
+#
+# distinct() dedupes so an entry that's both static and current doesn't
+# generate a duplicate rule. Stale IPs (old coffee shops, hotels) drop off
+# automatically — only your current IP and the curated static list survive.
+
+data "http" "my_ip" {
+  url = "https://checkip.amazonaws.com"
+}
+
+locals {
+  current_admin_cidr = "${chomp(data.http.my_ip.response_body)}/32"
+  admin_cidrs        = distinct(concat(var.allowed_admin_cidrs, [local.current_admin_cidr]))
 }
 
 
@@ -235,7 +271,7 @@ resource "azurerm_network_security_group" "bastion" {
     protocol                   = "Tcp"
     source_port_range          = "*"
     destination_port_range     = "22"
-    source_address_prefixes    = var.allowed_admin_cidrs
+    source_address_prefixes    = local.admin_cidrs
     destination_address_prefix = "*"
   }
 
